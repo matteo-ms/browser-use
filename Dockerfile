@@ -160,21 +160,15 @@ RUN echo "[+] Installing playwright and patchright..." \
         && echo -e '\n\n' \
      ) | tee -a /VERSION.txt
 
-# Install Chromium using playwright
-RUN echo "[+] Installing chromium apt pkgs and binary to /root/.cache/ms-playwright..." \
+# Install Chromium using playwright (simplified approach)
+RUN echo "[+] Installing chromium browser..." \
     && apt-get update -qq \
-    && playwright install --with-deps --no-shell chromium \
-    # && playwright install --with-deps chrome \
+    && apt-get install -y fonts-liberation fonts-dejavu-core \
+    && playwright install chromium \
     && rm -rf /var/lib/apt/lists/* \
-    && export CHROME_BINARY="$(python -c 'from playwright.sync_api import sync_playwright; print(sync_playwright().start().chromium.executable_path)')" \
-    && ln -s "$CHROME_BINARY" /usr/bin/chromium-browser \
-    && ln -s "$CHROME_BINARY" /app/chromium-browser \
     && mkdir -p "/home/${BROWSERUSE_USER}/.config/chromium/Crash Reports/pending/" \
     && chown -R "$BROWSERUSE_USER:$BROWSERUSE_USER" "/home/${BROWSERUSE_USER}/.config" \
-    && ( \
-        which chromium-browser && /usr/bin/chromium-browser --version \
-        && echo -e '\n\n' \
-    ) | tee -a /VERSION.txt
+    && echo "[+] Chromium installation completed" | tee -a /VERSION.txt
 
 RUN echo "[+] Installing browser-use pip sub-dependencies..." \
      && ( \

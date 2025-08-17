@@ -40,6 +40,8 @@ dependencies = [
     "pypdf>=5.7.0",
     "cdp-use>=1.4.0",
     "markdown-pdf==1.5",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
 ]
 # google-api-core: only used for Google LLM APIs
 # pyperclip: only used for examples that use copy/paste

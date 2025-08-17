@@ -182,7 +182,7 @@ COPY . /app
 # Install the browser-use package and all of its optional dependencies
 RUN echo "[+] Installing browser-use pip library from source..." \
      && ( \
-        uv sync --all-extras --locked --no-dev \
+        uv sync --all-extras --no-dev \
         && which browser-use \
         && browser-use --version 2>&1 \
         && echo -e '\n\n' \

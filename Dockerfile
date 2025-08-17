@@ -217,8 +217,28 @@ USER "$BROWSERUSE_USER"
 VOLUME "$DATA_DIR"
 EXPOSE 9242
 EXPOSE 9222
+EXPOSE 8000
 
-# HEALTHCHECK --interval=30s --timeout=20s --retries=15 \
-#     CMD curl --silent 'http://localhost:8000/health/' | grep -q 'OK'
+# Health check per API server
+HEALTHCHECK --interval=30s --timeout=20s --retries=15 \
+    CMD curl --silent 'http://localhost:8000/health' | grep -q 'ok' || exit 1
 
-ENTRYPOINT ["browser-use"]
+# Script entrypoint per supportare sia CLI che API server
+COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER <<EOF /app/entrypoint.sh
+#!/bin/bash
+set -e
+
+# Se primo argomento è --api-server, avvia API server
+if [ "\$1" = "--api-server" ]; then
+    shift
+    echo "🚀 Starting Browser-use API Server..."
+    exec python -m browser_use.api.server "\$@"
+else
+    # Altrimenti avvia browser-use CLI normale
+    exec browser-use "\$@"
+fi
+EOF
+
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,0 +1,229 @@
+# syntax=docker/dockerfile:1
+# Dockerfile ottimizzato per Railway con supporto headless browser
+
+FROM python:3.12-slim
+
+LABEL name="browseruse-railway" \
+    maintainer="Browser Use Team" \
+    description="Browser Use API for Railway deployment with headless browser support"
+
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+
+# Environment Variables per Railway e headless browser
+ENV TZ=UTC \
+    LANGUAGE=en_US:en \
+    LC_ALL=C.UTF-8 \
+    LANG=C.UTF-8 \
+    DEBIAN_FRONTEND=noninteractive \
+    APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 \
+    PYTHONIOENCODING=UTF-8 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_CACHE_DIR=/root/.cache/uv \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_PREFERENCE=only-system \
+    npm_config_loglevel=error \
+    IN_DOCKER=True
+
+# User config
+ENV BROWSERUSE_USER="browseruse" \
+    DEFAULT_PUID=911 \
+    DEFAULT_PGID=911
+
+# Paths
+ENV CODE_DIR=/app \
+    DATA_DIR=/data \
+    VENV_DIR=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
+
+# Headless browser environment variables
+ENV DISPLAY=:99 \
+    CHROME_BIN=/usr/bin/chromium-browser \
+    CHROME_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Chrome/Chromium flags for headless environment
+ENV CHROME_FLAGS="--no-sandbox \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    --disable-extensions \
+    --disable-plugins \
+    --disable-images \
+    --disable-background-timer-throttling \
+    --disable-backgrounding-occluded-windows \
+    --disable-renderer-backgrounding \
+    --disable-features=TranslateUI \
+    --disable-ipc-flooding-protection \
+    --disable-web-security \
+    --disable-features=VizDisplayCompositor \
+    --headless=new"
+
+# Build shell config
+SHELL ["/bin/bash", "-o", "pipefail", "-o", "errexit", "-o", "errtrace", "-o", "nounset", "-c"] 
+
+# Force apt to leave downloaded binaries in /var/cache/apt
+RUN echo 'Binary::apt::APT::Keep-Downloaded-Packages "1";' > /etc/apt/apt.conf.d/99keep-cache \
+    && echo 'APT::Install-Recommends "0";' > /etc/apt/apt.conf.d/99no-intall-recommends \
+    && echo 'APT::Install-Suggests "0";' > /etc/apt/apt.conf.d/99no-intall-suggests \
+    && rm -f /etc/apt/apt.conf.d/docker-clean
+
+# Install system dependencies including Xvfb and browser dependencies
+RUN echo "[+] Installing system dependencies for headless browser..." \
+    && apt-get update -qq \
+    && apt-get install -qq -y --no-install-recommends \
+        # Core system dependencies
+        apt-transport-https ca-certificates apt-utils gnupg2 unzip curl wget grep \
+        nano iputils-ping dnsutils jq \
+        # X11 and Xvfb for headless browser
+        xvfb x11-utils x11-xkb-utils xfonts-100dpi xfonts-75dpi xfonts-scalable xfonts-cyrillic \
+        # Browser dependencies (updated for Debian 12)
+        libnss3 libxss1 libasound2 libx11-xcb1 libxcomposite1 libxcursor1 libxdamage1 \
+        libxi6 libxtst6 libxrandr2 libasound2 libpangocairo-1.0-0 libatk1.0-0 \
+        libcairo-gobject2 libgtk-3-0 libgdk-pixbuf-2.0-0 libglib2.0-0 \
+        # Fonts
+        fonts-liberation fonts-dejavu-core fonts-noto-color-emoji fonts-noto fonts-freefont-ttf \
+        # Additional browser support
+        libdrm2 libxkbcommon0 libxshmfence1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Create non-privileged user for browseruse
+RUN echo "[*] Setting up $BROWSERUSE_USER user..." \
+    && groupadd --system $BROWSERUSE_USER \
+    && useradd --system --create-home --gid $BROWSERUSE_USER --groups audio,video $BROWSERUSE_USER \
+    && usermod -u "$DEFAULT_PUID" "$BROWSERUSE_USER" \
+    && groupmod -g "$DEFAULT_PGID" "$BROWSERUSE_USER" \
+    && mkdir -p /data /home/$BROWSERUSE_USER/.config \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /home/$BROWSERUSE_USER \
+    && ln -s $DATA_DIR /home/$BROWSERUSE_USER/.config/browseruse
+
+# Setup working directory and copy dependency files
+WORKDIR /app
+COPY pyproject.toml uv.lock* /app/
+
+# Setup Python virtual environment
+RUN echo "[+] Setting up Python venv..." \
+    && uv venv \
+    && which python | grep "$VENV_DIR" \
+    && python --version
+
+# Install playwright and patchright
+RUN echo "[+] Installing playwright and patchright..." \
+    && uv pip install playwright>=1.48.0 patchright>=1.48.0 \
+    && which playwright \
+    && playwright --version
+
+# Switch to browseruse user for Playwright installation
+USER "$BROWSERUSE_USER"
+
+# Install Chromium with playwright as browseruse user
+RUN echo "[+] Installing Chromium browser for headless as browseruse user..." \
+    && playwright install chromium \
+    && mkdir -p "/home/${BROWSERUSE_USER}/.config/chromium/Crash Reports/pending/" \
+    && echo "[+] Chromium installation completed"
+
+# Switch back to root for remaining setup
+USER root
+
+# Install browser-use dependencies
+RUN echo "[+] Installing browser-use dependencies..." \
+    && uv sync --all-extras --no-dev --no-install-project
+
+# Copy the application code
+COPY . /app
+
+# Install browser-use package
+RUN echo "[+] Installing browser-use from source..." \
+    && uv sync --all-extras --no-dev \
+    && which browser-use \
+    && browser-use --version 2>&1
+
+# Setup data directory permissions
+RUN mkdir -p /data/profiles/default \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data
+
+# Create startup script with Xvfb and browser configuration
+COPY --chown=$BROWSERUSE_USER:$BROWSERUSE_USER <<EOF /app/entrypoint-railway.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Starting Browser-use for Railway deployment..."
+
+# Start Xvfb (Virtual Framebuffer) for headless display
+echo "🖥️ Starting Xvfb virtual display..."
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+XVFB_PID=\$!
+
+# Wait for Xvfb to start
+sleep 3
+
+# Export display for applications
+export DISPLAY=:99
+
+# Find Chrome executable (Playwright installs it in a specific location)
+CHROME_PATH=\$(find /home/browseruse/.cache/ms-playwright -name "chrome" 2>/dev/null | head -1)
+if [ -z "\$CHROME_PATH" ]; then
+    CHROME_PATH=\$(which chromium 2>/dev/null || which chromium-browser 2>/dev/null || echo "")
+fi
+
+if [ -z "\$CHROME_PATH" ]; then
+    echo "❌ Chrome executable not found!"
+    exit 1
+fi
+
+# Set browser environment variables for browser-use
+export CHROME_PATH="\$CHROME_PATH"
+export CHROME_EXECUTABLE_PATH="\$CHROME_PATH"
+export CHROME_BIN="\$CHROME_PATH"
+export PUPPETEER_EXECUTABLE_PATH="\$CHROME_PATH"
+
+# Browser-use specific configurations
+export CHROME_DEBUGGING_PORT=9222
+export CHROME_DEBUGGING_HOST=127.0.0.1
+export CHROME_PERSISTENT_SESSION=false
+export CHROME_HEADLESS=true
+
+# Chrome flags for headless environment
+export CHROME_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --headless=new --disable-extensions --disable-plugins --disable-images --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-web-security --disable-features=VizDisplayCompositor --remote-debugging-port=9222 --remote-debugging-address=0.0.0.0"
+
+echo "🌐 Chrome executable: \$CHROME_PATH"
+echo "🖥️ Display: \$DISPLAY"
+echo "🚀 Chrome args: \$CHROME_ARGS"
+
+# Function to cleanup on exit
+cleanup() {
+    echo "🧹 Cleaning up..."
+    kill \$XVFB_PID 2>/dev/null || true
+    pkill -f chromium 2>/dev/null || true
+    exit 0
+}
+
+# Setup signal handlers
+trap cleanup SIGTERM SIGINT
+
+# Start the API server
+echo "🚀 Starting Browser-use API Server..."
+exec python /app/browser_use/api/server.py --host 0.0.0.0 --port \${PORT:-8000}
+EOF
+
+RUN chmod +x /app/entrypoint-railway.sh
+
+# Switch to non-root user
+USER "$BROWSERUSE_USER"
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=20s --retries=15 \
+    CMD curl --silent 'http://localhost:8000/health' | grep -q 'ok' || exit 1
+
+# Use Railway-specific entrypoint
+ENTRYPOINT ["/app/entrypoint-railway.sh"]

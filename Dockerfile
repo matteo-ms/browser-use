@@ -204,8 +204,8 @@ RUN --mount=type=cache,target=/root/.cache,sharing=locked,id=cache-$TARGETARCH$T
         && echo -e '\n\n' \
      ) | tee -a /VERSION.txt
 
-RUN mkdir -p "$DATA_DIR/profiles/default" \
-    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER "$DATA_DIR" "$DATA_DIR"/* \
+RUN mkdir -p /data/profiles/default \
+    && chown -R $BROWSERUSE_USER:$BROWSERUSE_USER /data \
     && ( \
         echo -e "\n\n[√] Finished Docker build successfully. Saving build summary in: /VERSION.txt" \
         && echo -e "PLATFORM=${TARGETPLATFORM} ARCH=$(uname -m) ($(uname -s) ${TARGETARCH} ${TARGETVARIANT})\n" \
@@ -214,7 +214,6 @@ RUN mkdir -p "$DATA_DIR/profiles/default" \
 
 
 USER "$BROWSERUSE_USER"
-VOLUME "$DATA_DIR"
 EXPOSE 9242
 EXPOSE 9222
 EXPOSE 8000

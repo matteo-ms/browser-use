@@ -114,8 +114,7 @@ RUN echo "[*] Setting up $BROWSERUSE_USER user uid=${DEFAULT_PUID}..." \
     # https://docs.linuxserver.io/general/understanding-puid-and-pgid
 
 # Install base apt dependencies (adding backports to access more recent apt updates)
-RUN --mount=type=cache,id=browser-use-apt-cache \
-    echo "[+] Installing APT base system dependencies for $TARGETPLATFORM..." \
+RUN echo "[+] Installing APT base system dependencies for $TARGETPLATFORM..." \
 #     && echo 'deb https://deb.debian.org/debian bookworm-backports main contrib non-free' > /etc/apt/sources.list.d/backports.list \
     && mkdir -p /etc/apt/keyrings \
     && apt-get update -qq \
@@ -144,8 +143,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock* /app/
 
-RUN --mount=type=cache,id=browser-use-uv-cache \
-    echo "[+] Setting up venv using uv in $VENV_DIR..." \
+RUN echo "[+] Setting up venv using uv in $VENV_DIR..." \
     && ( \
      which uv && uv --version \
      && uv venv \
@@ -154,8 +152,7 @@ RUN --mount=type=cache,id=browser-use-uv-cache \
     ) | tee -a /VERSION.txt
 
 # Install playwright using pip (with version from pyproject.toml)
-RUN --mount=type=cache,id=browser-use-pip-cache \
-     echo "[+] Installing playwright via pip using version from pyproject.toml..." \
+RUN echo "[+] Installing playwright via pip using version from pyproject.toml..." \
      && ( \
         PLAYWRIGHT_VERSION=$(grep -E "playwright>=" pyproject.toml | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -1) \
         && PATCHRIGHT_VERSION=$(grep -E "patchright>=" pyproject.toml | grep -o "[0-9]\+\.[0-9]\+\.[0-9]\+" | head -1) \
@@ -167,9 +164,7 @@ RUN --mount=type=cache,id=browser-use-pip-cache \
      ) | tee -a /VERSION.txt
 
 # Install Chromium using playwright
-RUN --mount=type=cache,id=browser-use-apt-cache \
-    --mount=type=cache,id=browser-use-playwright-cache \
-    echo "[+] Installing chromium apt pkgs and binary to /root/.cache/ms-playwright..." \
+RUN echo "[+] Installing chromium apt pkgs and binary to /root/.cache/ms-playwright..." \
     && apt-get update -qq \
     && playwright install --with-deps --no-shell chromium \
     # && playwright install --with-deps chrome \
@@ -184,8 +179,7 @@ RUN --mount=type=cache,id=browser-use-apt-cache \
         && echo -e '\n\n' \
     ) | tee -a /VERSION.txt
 
-RUN --mount=type=cache,id=browser-use-uv-cache \
-     echo "[+] Installing browser-use pip sub-dependencies..." \
+RUN echo "[+] Installing browser-use pip sub-dependencies..." \
      && ( \
         uv sync --all-extras --no-dev --no-install-project \
         && echo -e '\n\n' \
@@ -195,8 +189,7 @@ RUN --mount=type=cache,id=browser-use-uv-cache \
 COPY . /app
 
 # Install the browser-use package and all of its optional dependencies
-RUN --mount=type=cache,id=browser-use-uv-cache \
-     echo "[+] Installing browser-use pip library from source..." \
+RUN echo "[+] Installing browser-use pip library from source..." \
      && ( \
         uv sync --all-extras --locked --no-dev \
         && which browser-use \

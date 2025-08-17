@@ -215,7 +215,7 @@ set -e
 if [ "\$1" = "--api-server" ]; then
     shift
     echo "🚀 Starting Browser-use API Server..."
-    exec python -m browser_use.api.server "\$@"
+    exec python -m browser_use.api.server --host 0.0.0.0 --port \${PORT:-8000} "\$@"
 else
     # Altrimenti avvia browser-use CLI normale
     exec browser-use "\$@"
